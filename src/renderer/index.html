@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>J.A.R.V.I.S.</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: https: http:; media-src https: http: blob:; connect-src 'self'" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" />
+  <link rel="stylesheet" href="css/hud.css" />
+</head>
+<body>
+  <canvas id="bg"></canvas>
+  <div class="scanlines"></div>
+
+  <!-- ===== Abertura ===== -->
+  <section id="boot">
+    <div class="reactor big"><i></i><i></i><i></i><b></b></div>
+    <pre id="bootlog"></pre>
+    <div id="hello" class="hidden">
+      <h1 id="helloTitle">Olá, Vitor.</h1>
+      <p id="helloSub"></p>
+      <div id="question" class="hidden">
+        <h2>O que vamos fazer agora, senhor?</h2>
+        <div class="choices">
+          <button class="choice play" id="btnPlay"><span class="k">J</span><strong>Jogar</strong><small>Abrir o Blade Dash</small></button>
+          <button class="choice work" id="btnOther"><span class="k">ENTER</span><strong>Outra coisa</strong><small>Abrir o painel</small></button>
+        </div>
+        <button class="linkish hidden" id="btnContinue"></button>
+      </div>
+    </div>
+    <button class="skip" id="bootSkip">pular ›</button>
+  </section>
+
+  <!-- ===== Painel ===== -->
+  <main id="hud" class="hidden">
+    <header class="topbar">
+      <div class="brand"><div class="reactor tiny"><i></i><i></i><b></b></div><span>J.A.R.V.I.S.</span><em>v0.1 // online</em></div>
+      <div class="ticker" id="ticker"></div>
+      <div class="clock"><span id="clock">--:--</span><small id="date"></small></div>
+      <div class="winctl">
+        <button id="btnSettings" title="Configurações">⚙</button>
+        <button data-win="fullscreen" title="Tela cheia">⛶</button>
+        <button data-win="minimize" title="Minimizar (Ctrl+Alt+J)">—</button>
+        <button data-win="close" title="Fechar">✕</button>
+      </div>
+    </header>
+
+    <div class="grid">
+      <!-- Coluna esquerda -->
+      <div class="col">
+        <section class="panel greet">
+          <div class="reactor mid"><i></i><i></i><i></i><b></b></div>
+          <div>
+            <h2 id="greetTitle">Boa noite, Vitor.</h2>
+            <p class="mono dim" id="greetSub">Todos os sistemas operacionais.</p>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h3><span>Briefing</span><button class="mini" id="btnBriefing">↻ gerar</button></h3>
+          <div id="briefing" class="briefing dim">Aguardando dados…</div>
+        </section>
+
+        <section class="panel">
+          <h3><span>Clima</span><em id="wPlace"></em></h3>
+          <div id="weather" class="weather"></div>
+        </section>
+
+        <section class="panel">
+          <h3><span>Sistema</span><em id="sysHost"></em></h3>
+          <div id="system" class="system"></div>
+        </section>
+      </div>
+
+      <!-- Coluna central -->
+      <div class="col wide">
+        <section class="panel timao" id="timao">
+          <h3><span>Sport Club Corinthians Paulista</span><em id="timaoComp">Brasileirão</em></h3>
+          <div id="football" class="football">Carregando dados do Timão…</div>
+        </section>
+
+        <section class="panel news">
+          <h3>
+            <span>Feed de inteligência</span>
+            <nav class="tabs" id="newsTabs">
+              <button data-k="tech" class="on">Tecnologia</button>
+              <button data-k="geo">Geopolítica</button>
+              <button data-k="world">Mundo</button>
+              <button data-k="geek">Geek</button>
+              <button data-k="games">Games</button>
+              <button data-k="timao">Timão</button>
+            </nav>
+          </h3>
+          <ul id="news" class="newslist"></ul>
+        </section>
+
+        <section class="panel chat">
+          <h3><span>Canal direto · Claude</span><button class="mini" id="btnNewChat">novo assunto</button></h3>
+          <div id="chatLog" class="chatlog"></div>
+          <form id="chatForm" class="chatform">
+            <span class="prompt">›</span>
+            <input id="chatInput" autocomplete="off" placeholder="Pergunte qualquer coisa ao J.A.R.V.I.S…" />
+            <button type="submit">enviar</button>
+          </form>
+        </section>
+      </div>
+
+      <!-- Coluna direita -->
+      <div class="col">
+        <section class="panel gamepanel">
+          <h3><span>Modo jogo</span><em id="gameCount"></em></h3>
+          <div id="lastGame" class="lastgame"></div>
+          <button class="bigbtn" id="btnBlade">▶ Abrir Blade Dash</button>
+          <div id="recentGames" class="recent"></div>
+        </section>
+
+        <section class="panel music">
+          <h3><span>Trilha do dia</span><button class="mini" id="btnShuffle">⤨ outra</button></h3>
+          <div id="track" class="track"></div>
+          <div id="moreTracks" class="moretracks"></div>
+        </section>
+
+        <section class="panel radio">
+          <h3><span>Rádio</span><em id="radioNow">desligado</em></h3>
+          <div class="eq" id="eq"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <nav class="chips" id="radioTags">
+            <button data-tag="rock" data-c="BR" class="on">Rock BR</button>
+            <button data-tag="rock">Rock</button>
+            <button data-tag="emo">Emo</button>
+            <button data-tag="punk">Punk</button>
+            <button data-tag="alternative">Alternativo</button>
+            <button data-tag="metal">Metal</button>
+          </nav>
+          <ul id="stations" class="stations"></ul>
+          <div class="player"><button id="radioStop">■ parar</button><input type="range" id="vol" min="0" max="1" step="0.05" value="0.6" /></div>
+          <audio id="audio" preload="none"></audio>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <!-- ===== Configurações ===== -->
+  <dialog id="settings">
+    <h2>Configurações</h2>
+    <label><input type="checkbox" data-cfg="autostart" /> Abrir o Jarvis quando o Windows ligar</label>
+    <label><input type="checkbox" data-cfg="askOnStart" /> Perguntar "jogar ou outra coisa?" ao abrir</label>
+    <label><input type="checkbox" data-cfg="voice" /> Saudação falada</label>
+    <label><input type="checkbox" data-cfg="autoBriefing" /> Briefing automático do Claude ao abrir (usa seu plano)</label>
+    <label><input type="checkbox" data-cfg="fullscreen" /> Tela cheia</label>
+    <label class="row">Seu nome <input type="text" data-cfg="userName" /></label>
+    <p class="dim mono small">Atalho global: Ctrl + Alt + J traz o Jarvis de volta.</p>
+    <div class="right"><button id="settingsClose">fechar</button></div>
+  </dialog>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

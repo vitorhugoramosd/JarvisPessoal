@@ -1,0 +1,16 @@
+{
+  "name": "jarvis",
+  "productName": "Jarvis",
+  "version": "0.1.0",
+  "description": "Dashboard pessoal estilo J.A.R.V.I.S. que abre com o Windows",
+  "main": "src/main/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "autostart:on": "electron . --install-autostart",
+    "autostart:off": "electron . --remove-autostart"
+  },
+  "devDependencies": {
+    "electron": "33.2.1"
+  }
+}
