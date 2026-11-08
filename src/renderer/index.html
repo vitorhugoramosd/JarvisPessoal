@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" />
   <link rel="stylesheet" href="css/hud.css" />
+  <link rel="stylesheet" href="css/voice.css" />
 </head>
 <body>
   <canvas id="bg"></canvas>
@@ -38,6 +39,8 @@
       <div class="ticker" id="ticker"></div>
       <div class="clock"><span id="clock">--:--</span><small id="date"></small></div>
       <div class="winctl">
+        <span id="voiceStatus" class="voice-status off">voz…</span>
+        <button id="btnMic" title="Falar com o Jarvis (Ctrl+Alt+Espaço)">🎙</button>
         <button id="btnSettings" title="Configurações">⚙</button>
         <button data-win="fullscreen" title="Tela cheia">⛶</button>
         <button data-win="minimize" title="Minimizar (Ctrl+Alt+J)">—</button>
@@ -116,8 +119,14 @@
 
         <section class="panel music">
           <h3><span>Trilha do dia</span><button class="mini" id="btnShuffle">⤨ outra</button></h3>
-          <div id="track" class="track"></div>
-          <div id="moreTracks" class="moretracks"></div>
+          <nav class="chips moods" id="moodChips"></nav>
+          <div class="music-body">
+            <div id="track" class="track"></div>
+            <div id="playlistDay" class="playlistday"></div>
+            <div id="moreTracks" class="moretracks"></div>
+            <div class="pl-head"><small class="dim">Suas playlists</small><small class="dim mono" id="plCount"></small></div>
+            <div id="playlists" class="playlists"></div>
+          </div>
         </section>
 
         <section class="panel radio">
@@ -130,6 +139,9 @@
             <button data-tag="punk">Punk</button>
             <button data-tag="alternative">Alternativo</button>
             <button data-tag="metal">Metal</button>
+            <button data-tag="classic rock">Classic Rock</button>
+            <button data-tag="pagode" data-c="BR">Pagode</button>
+            <button data-tag="sertanejo" data-c="BR">Sertanejo</button>
           </nav>
           <ul id="stations" class="stations"></ul>
           <div class="player"><button id="radioStop">■ parar</button><input type="range" id="vol" min="0" max="1" step="0.05" value="0.6" /></div>
@@ -145,6 +157,7 @@
     <label><input type="checkbox" data-cfg="autostart" /> Abrir o Jarvis quando o Windows ligar</label>
     <label><input type="checkbox" data-cfg="askOnStart" /> Perguntar "jogar ou outra coisa?" ao abrir</label>
     <label><input type="checkbox" data-cfg="voice" /> Saudação falada</label>
+    <label><input type="checkbox" data-cfg="voiceCommands" /> Comandos de voz (diga “Jarvis”)</label>
     <label><input type="checkbox" data-cfg="autoBriefing" /> Briefing automático do Claude ao abrir (usa seu plano)</label>
     <label><input type="checkbox" data-cfg="fullscreen" /> Tela cheia</label>
     <label class="row">Seu nome <input type="text" data-cfg="userName" /></label>

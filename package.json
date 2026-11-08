@@ -8,7 +8,8 @@
   "scripts": {
     "start": "electron .",
     "autostart:on": "electron . --install-autostart",
-    "autostart:off": "electron . --remove-autostart"
+    "autostart:off": "electron . --remove-autostart",
+    "build:voice": "dotnet publish voice/JarvisVoice -c Release -o voice/bin"
   },
   "devDependencies": {
     "electron": "33.2.1"

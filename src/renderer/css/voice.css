@@ -1,0 +1,37 @@
+/* J.A.R.V.I.S. — voz: status, microfone, legenda e reator reagindo à fala */
+:root { --voice-level: 0; }
+
+.voice-status {
+  align-self: center; margin-right: 6px; padding: 3px 10px;
+  font-family: var(--f-mono, monospace); font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+  border: 1px solid rgba(41,227,255,.25); color: var(--dim, #7fa9b8); white-space: nowrap; cursor: default;
+}
+.voice-status.wake { color: var(--cyan, #29e3ff); border-color: rgba(41,227,255,.5); }
+.voice-status.wake::before { content: '● '; animation: vblink 2s ease-in-out infinite; }
+.voice-status.live { color: #02070d; background: var(--cyan, #29e3ff); border-color: var(--cyan, #29e3ff); box-shadow: 0 0 14px var(--cyan, #29e3ff); }
+.voice-status.off { opacity: .55; }
+@keyframes vblink { 50% { opacity: .2; } }
+
+#btnMic.on { color: #02070d; background: var(--cyan, #29e3ff); box-shadow: 0 0 16px var(--cyan, #29e3ff); animation: vpulse 1s ease-in-out infinite; }
+@keyframes vpulse { 50% { box-shadow: 0 0 4px var(--cyan, #29e3ff); } }
+
+/* Reator pulsa com o volume da voz */
+body.speaking .reactor {
+  transform: scale(calc(1 + var(--voice-level) * .12));
+  filter: drop-shadow(0 0 calc(8px + var(--voice-level) * 40px) rgba(41,227,255,.9)) brightness(calc(1 + var(--voice-level) * .8));
+  transition: transform .06s linear, filter .06s linear;
+}
+body.speaking .reactor b { box-shadow: 0 0 calc(20px + var(--voice-level) * 60px) rgba(160,245,255,.95); }
+
+/* Legenda do que foi ouvido */
+#voiceToast {
+  position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 20px); opacity: 0; pointer-events: none;
+  max-width: min(720px, 90vw); padding: 10px 18px; z-index: 50;
+  font-family: var(--f-mono, monospace); font-size: 15px; color: #eafcff;
+  background: rgba(2,10,18,.92); border: 1px solid rgba(41,227,255,.5); box-shadow: 0 0 24px rgba(41,227,255,.25);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  transition: opacity .25s, transform .25s;
+}
+#voiceToast.show { opacity: 1; transform: translate(-50%, 0); }
+#voiceToast.err { border-color: rgba(255,59,92,.7); color: #ffd0d8; }
+#voiceToast.info { border-color: rgba(255,181,71,.6); color: #ffe3b8; }

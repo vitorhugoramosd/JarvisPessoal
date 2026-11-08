@@ -8,6 +8,7 @@ const config = require('./config');
 const feeds = require('./feeds');
 const games = require('./games');
 const claude = require('./claude');
+const voice = require('./voice');
 
 const APP_DIR = path.resolve(__dirname, '..', '..');
 const RUN_VALUE = 'Jarvis';
@@ -46,19 +47,24 @@ if (process.argv.includes('--install-autostart') || process.argv.includes('--rem
 }
 
 function start() {
+  // No teste automático usa outra pasta de dados, para rodar mesmo com o Jarvis já aberto.
+  if (process.env.JARVIS_SMOKE) app.setPath('userData', path.join(process.env.JARVIS_SMOKE, 'userdata'));
   if (!app.requestSingleInstanceLock()) { app.quit(); return; }
   app.on('second-instance', () => showWindow());
 
   app.whenReady().then(() => {
     createWindow();
+    voice.init(() => win);
     globalShortcut.register('Control+Alt+J', () => {
       if (win && win.isVisible() && win.isFocused() && !win.isMinimized()) win.minimize();
       else showWindow();
     });
+    // Aperte para falar com o Jarvis (de qualquer lugar)
+    globalShortcut.register('Control+Alt+Space', () => { showWindow(); voice.send({ type: 'ptt' }); });
     // Garante que só o Jarvis abre no início do Windows (o Blade Dash abre pelo botão "Jogar").
     if (process.argv.includes('--autostart')) { try { games.disableBladeDashAutostart(); } catch {} }
   });
-  app.on('will-quit', () => globalShortcut.unregisterAll());
+  app.on('will-quit', () => { globalShortcut.unregisterAll(); voice.stop(); });
   app.on('window-all-closed', () => app.quit());
 }
 
@@ -103,6 +109,7 @@ function smokeTest(dir) {
   setTimeout(() => shot('2-hud.png'), 14000);
   setTimeout(async () => {
     await js("document.querySelector('#newsTabs [data-k=geek]')?.click()");
+    await js("import('./js/voice.js').then(m => m.speak('Teste de voz do Jarvis.')).then(() => console.log('voice-smoke: fala ok'))");
     await js("const i=document.getElementById('chatInput'); i.value='Em uma frase: quem é o maior ídolo da história do Corinthians?'; document.getElementById('chatForm').requestSubmit()");
   }, 15000);
   setTimeout(async () => {

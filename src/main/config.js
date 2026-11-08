@@ -6,6 +6,7 @@ const { app } = require('electron');
 const DEFAULTS = {
   userName: 'Vitor',
   voice: true,            // fala a saudação ao abrir
+  voiceCommands: true,    // fica ouvindo a palavra "Jarvis"
   autoBriefing: true,     // pede ao Claude um briefing ao abrir (usa o seu plano)
   askOnStart: true,       // pergunta "jogar ou outra coisa?" ao abrir
   fullscreen: false,

@@ -1,5 +1,6 @@
 // J.A.R.V.I.S. — interface (processo de renderização)
-import { TRACKS } from './music.js';
+import { initMusic } from './musicpanel.js';
+import * as Voice from './voice.js';
 
 const J = window.jarvis;
 const $ = (s, r = document) => r.querySelector(s);
@@ -108,18 +109,10 @@ function kickoff() {
 // 2. Abertura
 // ============================================================
 let entered = false;
+// Saudação falada: voz "Daniel" com efeito (voice.js); cai para a voz do navegador se o ajudante faltar.
 function speak(text) {
-  if (!CFG.voice || !('speechSynthesis' in window)) return;
-  const go = () => {
-    const vs = speechSynthesis.getVoices().filter((v) => /^pt/i.test(v.lang));
-    if (!vs.length) return;
-    const v = vs.find((x) => /maria|francisca|antonio/i.test(x.name) && /BR/i.test(x.lang)) || vs.find((x) => /BR/i.test(x.lang)) || vs[0];
-    const u = new SpeechSynthesisUtterance(text);
-    u.voice = v; u.lang = v.lang; u.rate = 1.02; u.pitch = 0.95;
-    speechSynthesis.cancel(); speechSynthesis.speak(u);
-  };
-  if (speechSynthesis.getVoices().length) go();
-  else speechSynthesis.addEventListener('voiceschanged', go, { once: true });
+  if (!CFG.voice) return;
+  Voice.speak(text);
 }
 
 async function boot() {
@@ -504,32 +497,7 @@ function renderGames() {
 // ============================================================
 // 10. Música
 // ============================================================
-const yt = (t) => `https://www.youtube.com/results?search_query=${encodeURIComponent(`${t.artist} ${t.song}`)}`;
-const sp = (t) => `https://open.spotify.com/search/${encodeURIComponent(`${t.artist} ${t.song}`)}`;
-function renderTrack(idx) {
-  const t = TRACKS[idx % TRACKS.length];
-  const box = clear($('#track'));
-  box.append(el('span', 'band', t.artist), el('b', 'song', t.song), el('p', 'why', `“${t.why}”`));
-  const btns = el('div', 'links');
-  const a = el('button', 'yt', '▶ YouTube'); a.onclick = () => J.open(yt(t));
-  const b = el('button', 'sp', '● Spotify'); b.onclick = () => J.open(sp(t));
-  btns.append(a, b);
-  box.appendChild(btns);
-}
-function renderMoreTracks(seed) {
-  const box = clear($('#moreTracks'));
-  box.appendChild(el('small', 'dim', 'Também vale ouvir:'));
-  for (let i = 1; i <= 4; i++) {
-    const t = TRACKS[(seed * 7 + i * 11) % TRACKS.length];
-    const li = el('div', 'item');
-    const label = el('span');
-    label.append(el('b', null, t.artist), ` — ${t.song}`);
-    const a = el('button', 'yt', '▶'); a.title = 'YouTube'; a.onclick = () => J.open(yt(t));
-    const b = el('button', 'sp', '●'); b.title = 'Spotify'; b.onclick = () => J.open(sp(t));
-    li.append(label, a, b);
-    box.appendChild(li);
-  }
-}
+// A lógica do painel (humores, trilha do dia, playlists do Spotify) está em musicpanel.js.
 
 // ============================================================
 // 11. Rádio
@@ -592,8 +560,9 @@ function buildContext() {
   return L.join('\n');
 }
 let briefingBusy = false;
-async function generateBriefing() {
-  if (briefingBusy) return;
+// opts.speakIt = true → também fala o briefing. Retorna o texto (ou null).
+async function generateBriefing(opts) {
+  if (briefingBusy) return null;
   briefingBusy = true;
   const box = $('#briefing');
   box.classList.add('loading'); box.classList.remove('dim');
@@ -601,9 +570,12 @@ async function generateBriefing() {
   try {
     const r = await J.ask(`Faça um briefing de abertura para o ${CFG.userName} em 3 a 5 frases curtas, no seu estilo, com base nestes dados (não invente nada além deles, sem buscar na web):\n\n${buildContext()}`, { fresh: true, allowWeb: false });
     box.textContent = r.text.trim();
+    if (opts?.speakIt === true) Voice.speak(box.textContent);
+    return box.textContent;
   } catch (e) {
     box.classList.add('dim');
     box.textContent = 'Não consegui falar com o Claude agora: ' + e.message;
+    return null;
   } finally {
     box.classList.remove('loading');
     briefingBusy = false;
@@ -632,19 +604,27 @@ async function sendChat(e) {
   const text = input.value.trim();
   if (!text) return;
   input.value = '';
+  await askChat(text);
+  input.focus();
+}
+// Pergunta ao Claude mostrando no chat; retorna o texto da resposta (usado também pela voz).
+async function askChat(text) {
+  const input = $('#chatInput');
   input.disabled = true;
   addMsg('me', text);
   const wait = addMsg('ai thinking', 'processando…');
   try {
     const r = await J.ask(text);
     wait.remove();
-    addMsg('ai', r.text.trim() || '(sem resposta)');
+    const answer = r.text.trim() || '(sem resposta)';
+    addMsg('ai', answer);
+    return answer;
   } catch (err) {
     wait.remove();
     addMsg('err', 'Falha na comunicação: ' + err.message);
+    throw err;
   } finally {
     input.disabled = false;
-    input.focus();
   }
 }
 
@@ -667,6 +647,7 @@ function setupSettings() {
       const v = inp.type === 'checkbox' ? inp.checked : inp.value.trim();
       try { CFG = await J.setConfig({ [k]: v }); } catch (e) { alert('Não consegui salvar: ' + e.message); }
       if (k === 'userName') $('#greetTitle').textContent = `${periodo()}, ${CFG.userName}.`;
+      if (k === 'voiceCommands') Voice.setWake(!!CFG.voiceCommands);
     });
   }
   $('#settingsClose').onclick = () => dlg.close();
@@ -691,8 +672,7 @@ async function startDashboard() {
   setInterval(() => showTab(currentTab, true), 15 * 60 * 1000);
   P.games.then(renderGames); setInterval(() => loaders.games().then(renderGames).catch(() => {}), 5 * 60 * 1000);
 
-  const seed = dayOfYear();
-  renderTrack(seed); renderMoreTracks(seed);
+  initMusic(J);
   loadStations($('#radioTags button'));
 
   welcomeChat();
@@ -700,7 +680,7 @@ async function startDashboard() {
   // Briefing automático (espera os dados, no máximo 8 s)
   if (CFG.autoBriefing) {
     await Promise.race([Promise.allSettled([P.football, P.tech, P.geo, P.weather]), sleep(8000)]);
-    generateBriefing();
+    generateBriefing({ speakIt: !!CFG.voice });
   } else {
     $('#briefing').textContent = 'Clique em “gerar” para um briefing do Claude.';
   }
@@ -716,7 +696,6 @@ function wireEvents() {
   $$('[data-win]').forEach((b) => (b.onclick = () => J.win(b.dataset.win)));
   $$('#newsTabs button').forEach((b) => (b.onclick = () => showTab(b.dataset.k)));
   $('#btnBlade').onclick = () => J.openBladeDash().catch((e) => alert(e.message));
-  $('#btnShuffle').onclick = () => { const i = Math.floor(Math.random() * TRACKS.length); renderTrack(i); renderMoreTracks(i); };
   $$('#radioTags button').forEach((b) => (b.onclick = () => loadStations(b)));
   $('#radioStop').onclick = stopRadio;
   $('#vol').oninput = (e) => (audio().volume = +e.target.value);
@@ -742,5 +721,45 @@ function wireEvents() {
   try { CFG = { ...CFG, ...(await J.getConfig()) }; } catch {}
   kickoff();
   wireEvents();
+  exposeActions();
+  Voice.init({ cfg: () => CFG });
   boot();
 })();
+
+// ---------- Ações para os comandos de voz (voice.js) ----------
+function exposeActions() {
+  const waitFor = async (fn, ms = 7000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const v = fn(); if (v) return v; await sleep(200); } return null; };
+  window.JarvisActions = {
+    enter: () => enterDashboard(),
+    choosePlay: () => (entered ? J.openBladeDash().catch(() => {}) : choosePlay()),
+    openBladeDash: () => J.openBladeDash(),
+    async continueLast() {
+      const g = STATE.games || (await P.games);
+      if (!g?.last) return null;
+      await J.launchGame(g.last.id);
+      if (!entered) enterDashboard();
+      return g.last.name;
+    },
+    // Toca a 1ª estação do gênero pedido (clicando no chip, para manter a interface em sincronia)
+    async playRadio(tag = 'rock') {
+      enterDashboard();
+      const chip = $(`#radioTags button[data-tag="${tag}"]:not([data-c])`) || $(`#radioTags button[data-tag="${tag}"]`) || $('#radioTags button[data-tag="rock"]');
+      if (!chip) return null;
+      chip.click();
+      await sleep(300);
+      const li = await waitFor(() => { const x = $('#stations li'); return x && !/carregando/i.test(x.textContent) && x.querySelector('.nm') ? x : null; });
+      if (!li) return null;
+      li.click();
+      return li.querySelector('.nm')?.textContent || 'a rádio';
+    },
+    stopRadio: () => $('#radioStop')?.click(),
+    showNews: (k) => { enterDashboard(); $(`#newsTabs button[data-k="${k}"]`)?.click(); },
+    getNews: async (k) => STATE.news[k] || (await loaders.news(k).catch(() => [])),
+    football: () => STATE.football,
+    weather: () => STATE.weather,
+    track: () => ({ band: $('#track .band')?.textContent || '', song: $('#track .song')?.textContent || '' }),
+    briefing: () => { enterDashboard(); return generateBriefing(); },
+    ask: (text) => { enterDashboard(); return askChat(text); },
+    minimize: () => J.win('minimize'),
+  };
+}

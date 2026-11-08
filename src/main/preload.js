@@ -21,5 +21,11 @@ contextBridge.exposeInMainWorld('jarvis', {
   resetChat: () => call('claude:reset'),
   open: (url) => call('open', url),
   win: (cmd) => call('win', cmd),
+  voice: {
+    cmd: (c) => call('voice:cmd', c),
+    speak: (text) => call('voice:speak', text),
+    available: () => call('voice:available'),
+    onEvent: (cb) => ipcRenderer.on('voice:event', (_e, ev) => cb(ev)),
+  },
   isAutostart: process.argv.includes('--jarvis-autostart'),
 });

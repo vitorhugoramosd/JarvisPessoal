@@ -1,1 +1,4 @@
 node_modules/
+voice/bin/
+voice/**/bin/
+voice/**/obj/
