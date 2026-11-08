@@ -87,6 +87,29 @@ function createWindow() {
   win.on('closed', () => (win = null));
   // Links externos vão para o navegador padrão
   win.webContents.setWindowOpenHandler(({ url }) => { openSafe(url); return { action: 'deny' }; });
+  if (process.env.JARVIS_SMOKE) smokeTest(process.env.JARVIS_SMOKE);
+}
+
+// Teste automático: JARVIS_SMOKE=<pasta> npm start → salva prints + erros do console e fecha.
+function smokeTest(dir) {
+  const fs = require('fs');
+  fs.mkdirSync(dir, { recursive: true });
+  const logs = [];
+  win.webContents.on('console-message', (_e, level, msg, line, src) => logs.push(`[${level}] ${msg} (${src}:${line})`));
+  const shot = (name) => win.webContents.capturePage().then((img) => fs.writeFileSync(path.join(dir, name), img.toPNG()));
+  const js = (code) => win.webContents.executeJavaScript(code, true).catch((e) => logs.push('[exec] ' + e.message));
+  setTimeout(() => shot('1-boot.png'), 3500);
+  setTimeout(() => js("document.getElementById('btnOther')?.click() || document.getElementById('bootSkip')?.click()"), 4500);
+  setTimeout(() => shot('2-hud.png'), 14000);
+  setTimeout(async () => {
+    await js("document.querySelector('#newsTabs [data-k=geek]')?.click()");
+    await js("const i=document.getElementById('chatInput'); i.value='Em uma frase: quem é o maior ídolo da história do Corinthians?'; document.getElementById('chatForm').requestSubmit()");
+  }, 15000);
+  setTimeout(async () => {
+    await shot('3-hud-later.png');
+    fs.writeFileSync(path.join(dir, 'console.txt'), logs.join('\n'));
+    app.quit();
+  }, 40000);
 }
 
 function openSafe(url) {

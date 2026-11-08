@@ -191,7 +191,7 @@ a { color: var(--cyan); }
 .col > .panel { min-height: 0; }
 .col.wide .timao { flex: none; }
 .col.wide .news { flex: 1 1 auto; }
-.col.wide .chat { flex: 0 0 34%; }
+.col.wide .chat { flex: 0 0 27%; }
 .col:not(.wide) > .panel:last-child { flex: 1 1 auto; }
 
 /* ===== Panel ===== */
@@ -382,7 +382,7 @@ a { color: var(--cyan); }
 .recent .stats { flex: 1; font-family: var(--f-mono); font-size: 11.5px; color: var(--dim); }
 
 /* ===== Music ===== */
-.track { padding: 4px 0 6px; }
+.music .track { padding: 4px 0 6px; }
 .track .band { font-family: var(--f-head); font-size: 20px; font-weight: 800; letter-spacing: .04em; color: #eafcff; text-shadow: var(--glow); }
 .track .song { font-size: 17px; font-weight: 600; margin: 2px 0; }
 .track .why { font-size: 13px; color: var(--dim); margin: 4px 0 8px; }
@@ -452,3 +452,19 @@ dialog#settings .right button { background: var(--cyan); border: 0; color: var(-
   .fb-cols { grid-template-columns: 1fr; }
   .choices { flex-direction: column; align-items: center; }
 }
+
+/* ===== Ajustes pós-teste (v0.1.1) ===== */
+.bar { display: block; }
+.bar .bar-head { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.bar .bar-head .label { color: var(--dim); text-transform: uppercase; }
+.bar .track { height: 6px; padding: 0; }
+.kv { display: flex; justify-content: space-between; gap: 10px; font-family: var(--f-mono); font-size: 12px; margin-top: 4px; }
+.kv > span:last-child { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lastgame .tag, .lastgame .name, .lastgame .meta { display: block; }
+.lastgame .continue { margin-top: 6px; }
+.music .track .band, .music .track .song { display: block; }
+.newslist .title, .newslist .meta { display: block; }
+.recent { flex-wrap: wrap; align-items: flex-end; }
+.recent .stats { flex: 1 1 100%; margin-bottom: 6px; }
+.moretracks .item { display: flex; align-items: center; gap: 6px; }
+.moretracks .item span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
