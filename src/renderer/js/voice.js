@@ -362,6 +362,7 @@ export function cameFromVoice() { return fromVoice; }
 // Eventos do ajudante
 // ============================================================
 let wakeBusy = false;
+let lastDeafRetry = 0; // reconecta o microfone no máximo uma vez por aperto
 async function onEvent(ev) {
   switch (ev.type) {
     case 'ready':
@@ -399,6 +400,12 @@ async function onEvent(ev) {
     }
     case 'heard': {
       if (ev.dictation === false) dictation = false;
+      if (!ev.text && ev.confidence === 'Deaf' && Date.now() - lastDeafRetry > 20000) {
+        lastDeafRetry = Date.now();
+        toast('O microfone não estava mandando áudio — reconectei. Pode falar.', 'info');
+        setTimeout(() => listenOnce(), 900);
+        break;
+      }
       if (!ev.text) { toast(ev.confidence === 'Timeout' ? 'Não ouvi nenhum comando.' : 'Não entendi, senhor.', 'err'); break; }
       toast(`“${ev.text}”`);
       // só “Jarvis” → responde e ouve o comando

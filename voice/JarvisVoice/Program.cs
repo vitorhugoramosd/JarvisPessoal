@@ -43,6 +43,8 @@ static class Program
     static DateTime armedUntil = DateTime.MinValue;
     static int armSeq;               // invalida temporizadores antigos
     static bool dictationOk = true;  // ditado livre (depende da privacidade do Windows)
+    static DateTime lastAudio = DateTime.UtcNow; // último resultado do reconhecedor (até ruído rejeitado): prova que o áudio está chegando
+    static readonly TimeSpan DeafAfter = TimeSpan.FromMinutes(3);
     static readonly SemaphoreSlim Gate = new(1, 1);
 
     static void Emit(object o)
@@ -58,6 +60,7 @@ static class Program
         var voices = SpeechSynthesizer.AllVoices.Where(v => v.Language.StartsWith("pt", StringComparison.OrdinalIgnoreCase)).Select(v => v.DisplayName).ToArray();
         dictationOk = OnlineSpeechAccepted();
         Emit(new { type = "ready", dictation = dictationOk, voices });
+        _ = Task.Run(Watchdog);
 
         string? line;
         while ((line = await Console.In.ReadLineAsync()) != null)
@@ -116,6 +119,24 @@ static class Program
 
     static bool Armed => DateTime.UtcNow < armedUntil;
 
+    // A sessão contínua do Windows às vezes fica "surda" (para de receber áudio sem avisar).
+    // Se passar muito tempo sem nenhum resultado (nem ruído), recria o reconhecedor.
+    static async Task Watchdog()
+    {
+        while (true)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(30));
+            if (running && (wakeWanted || Armed) && DateTime.UtcNow - lastAudio > DeafAfter)
+                await Recycle("sem-audio-ha-" + (int)(DateTime.UtcNow - lastAudio).TotalSeconds + "s");
+        }
+    }
+
+    static async Task Recycle(string why)
+    {
+        Emit(new { type = "debug", what = "reiniciando-escuta", why });
+        await Run(async () => { ResetRecognizer(); lastAudio = DateTime.UtcNow; if (wakeWanted || Armed) await EnsureRunning(); }, "reciclar");
+    }
+
     static void EmitState() =>
         Emit(new { type = "state", listening = Armed ? "once" : (wakeWanted ? "wake" : "off") });
 
@@ -155,6 +176,7 @@ static class Program
         if (running) return;
         await rec!.ContinuousRecognitionSession.StartAsync();
         running = true;
+        lastAudio = DateTime.UtcNow;
     }
 
     // Para a sessão só se ninguém mais precisa dela. Usa Cancel (não Stop) e, se travar, descarta o reconhecedor.
@@ -180,9 +202,11 @@ static class Program
             bool expired;
             lock (StateLock) { expired = my == armSeq && armedUntil != DateTime.MinValue && !Armed; if (expired) armedUntil = DateTime.MinValue; }
             if (!expired) return;
-            Emit(new { type = "heard", text = "", confidence = "Timeout", dictation = dictationOk });
+            var deaf = DateTime.UtcNow - lastAudio > ArmWindow;
+            Emit(new { type = "heard", text = "", confidence = deaf ? "Deaf" : "Timeout", dictation = dictationOk });
             EmitState();
-            await Run(StopIfIdle, "fim-once");
+            if (deaf) await Recycle("microfone-sem-audio");
+            else await Run(StopIfIdle, "fim-once");
         });
     }
 
@@ -191,6 +215,7 @@ static class Program
         var text = (r.Text ?? "").Trim();
         var low = text.ToLowerInvariant();
         var conf = r.Confidence;
+        lastAudio = DateTime.UtcNow;
         Emit(new { type = "debug", what = "ouvido", text, confidence = conf.ToString(), armed = Armed });
         if (r.Status != SpeechRecognitionResultStatus.Success || conf == SpeechRecognitionConfidence.Rejected || text.Length == 0) return;
 
