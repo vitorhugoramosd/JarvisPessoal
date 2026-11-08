@@ -376,8 +376,8 @@ async function onEvent(ev) {
       listening = ev.listening;
       break;
     case 'mode':
+      if (dictation !== false && !ev.dictation) toast('Ditado livre desativado no Windows — entendo só os comandos.', 'info');
       dictation = !!ev.dictation;
-      if (dictation === false) toast('Ditado livre desativado no Windows — entendo só os comandos.', 'info');
       break;
     case 'ptt':
       listenOnce();
@@ -399,8 +399,10 @@ async function onEvent(ev) {
     }
     case 'heard': {
       if (ev.dictation === false) dictation = false;
-      if (!ev.text) { toast('Não entendi, senhor.', 'err'); break; }
+      if (!ev.text) { toast(ev.confidence === 'Timeout' ? 'Não ouvi nenhum comando.' : 'Não entendi, senhor.', 'err'); break; }
       toast(`“${ev.text}”`);
+      // só “Jarvis” → responde e ouve o comando
+      if (!stripWake(norm(ev.text))) { chirp(); await speak('Pois não?'); listenOnce(); break; }
       const done = await handle(ev.text);
       if (!done) {
         if (dictation === false) speak('Por enquanto só entendo comandos, senhor. Para conversar por voz, ative o reconhecimento de fala online do Windows.');

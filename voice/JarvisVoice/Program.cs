@@ -1,7 +1,12 @@
 // JarvisVoice — ajudante de voz do Jarvis (fala + reconhecimento) usando as APIs WinRT do Windows.
 // Protocolo: linhas JSON em stdin/stdout.
 //   entrada: {"cmd":"wake"} | {"cmd":"once"} | {"cmd":"stop"} | {"cmd":"speak","id":"x","text":"..."}
-//   saída:   ready | state | wake | heard | mode | spoken | error
+//   saída:   ready | state | wake | heard | mode | spoken | error | debug
+//
+// Arquitetura da escuta: UM reconhecedor contínuo (lista de comandos, offline) que fica sempre ligado.
+// Nunca é parado para ouvir um comando — parar/religar a sessão do Windows às vezes trava.
+//  - Normal: só aceita frases que começam com "jarvis" (evento "wake").
+//  - "once" (botão do microfone): por alguns segundos aceita o próximo comando mesmo sem "jarvis" (evento "heard").
 using System.Security;
 using System.Text.Json;
 using Windows.Globalization;
@@ -11,28 +16,33 @@ using Windows.Storage.Streams;
 
 static class Program
 {
-    // Comandos reconhecidos offline (sem ditado). Fica tudo aqui, num lugar só.
+    // Comandos reconhecidos offline. Fica tudo aqui, num lugar só.
     static readonly string[] Commands =
     {
-        "abre o blade dash", "abrir o blade dash", "vamos jogar", "quero jogar",
-        "continuar jogo", "continuar o jogo",
+        "abre o blade dash", "abrir o blade dash", "abre o jogo", "vamos jogar", "quero jogar", "modo jogo",
+        "continuar jogo", "continuar o jogo", "continua o jogo",
         "toca rock", "toca emo", "toca punk", "toca metal", "toca pagode", "toca sertanejo",
-        "liga a rádio", "toca uma música", "para a música", "parar a música", "pausa a música", "desliga a rádio",
+        "liga a rádio", "toca uma música", "para a música", "parar a música", "pausa a música", "desliga a rádio", "para a rádio",
         "notícias", "notícias de tecnologia", "notícias de geopolítica", "notícias do mundo", "notícias geek", "notícias de games", "notícias do timão",
-        "como está o corinthians", "como está o timão", "próximo jogo do corinthians",
-        "previsão do tempo", "como está o tempo", "clima",
+        "como está o corinthians", "como está o timão", "próximo jogo do corinthians", "corinthians", "timão",
+        "previsão do tempo", "como está o tempo", "clima", "vai chover",
         "sugere uma música", "trilha do dia",
-        "briefing", "me dá um briefing",
-        "minimizar", "obrigado",
+        "briefing", "me dá um briefing", "resumo do dia",
+        "minimizar", "obrigado", "valeu",
     };
-    static readonly string[] WakeWords = { "jarvis", "ei jarvis", "olá jarvis", "oi jarvis", "jarvis acorda" };
+    static readonly string[] WakeWords = { "jarvis", "ei jarvis", "olá jarvis", "oi jarvis", "fala jarvis", "jarvis acorda" };
+    static readonly TimeSpan ArmWindow = TimeSpan.FromSeconds(8);
 
     static readonly object OutLock = new();
+    static readonly object StateLock = new();
     static readonly Language PtBr = new("pt-BR");
-    static SpeechRecognizer? wakeRec;
-    static bool wakeWanted;
-    static bool wakeRunning;
-    static bool dictationOk = true;
+
+    static SpeechRecognizer? rec;
+    static bool wakeWanted;          // o usuário quer a palavra "Jarvis" sempre ativa
+    static bool running;             // a sessão contínua está rodando
+    static DateTime armedUntil = DateTime.MinValue;
+    static int armSeq;               // invalida temporizadores antigos
+    static bool dictationOk = true;  // ditado livre (depende da privacidade do Windows)
     static readonly SemaphoreSlim Gate = new(1, 1);
 
     static void Emit(object o)
@@ -46,7 +56,7 @@ static class Program
         Console.InputEncoding = System.Text.Encoding.UTF8;
         Console.OutputEncoding = System.Text.Encoding.UTF8;
         var voices = SpeechSynthesizer.AllVoices.Where(v => v.Language.StartsWith("pt", StringComparison.OrdinalIgnoreCase)).Select(v => v.DisplayName).ToArray();
-        dictationOk = await CheckDictation();
+        dictationOk = OnlineSpeechAccepted();
         Emit(new { type = "ready", dictation = dictationOk, voices });
 
         string? line;
@@ -60,9 +70,9 @@ static class Program
                 var cmd = root.GetProperty("cmd").GetString();
                 switch (cmd)
                 {
-                    case "wake": _ = Run(StartWake); break;
-                    case "stop": _ = Run(async () => { wakeWanted = false; await StopWake(); Emit(new { type = "state", listening = "off" }); }); break;
-                    case "once": _ = Run(ListenOnce); break;
+                    case "wake": wakeWanted = true; _ = Run(EnsureRunning, "wake"); EmitState(); break;
+                    case "stop": wakeWanted = false; _ = Run(StopIfIdle, "stop"); EmitState(); break;
+                    case "once": _ = Run(Arm, "once"); break;
                     case "speak":
                         var id = root.TryGetProperty("id", out var i) ? i.GetString() ?? "x" : "x";
                         var text = root.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
@@ -75,128 +85,132 @@ static class Program
         }
     }
 
-    static async Task<bool> CheckDictation()
+    // Ditado livre precisa de "Reconhecimento de fala online" ligado (Configurações › Privacidade › Fala).
+    static bool OnlineSpeechAccepted()
     {
         try
         {
-            using var rec = new SpeechRecognizer(PtBr);
-            rec.Constraints.Add(new SpeechRecognitionTopicConstraint(SpeechRecognitionScenario.Dictation, "ditado"));
-            var comp = await rec.CompileConstraintsAsync();
-            return comp.Status == SpeechRecognitionResultStatus.Success;
+            using var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Speech_OneCore\Settings\OnlineSpeechPrivacy");
+            return k?.GetValue("HasAccepted") is int v && v == 1;
         }
-        catch (Exception ex) { Emit(new { type = "mode", dictation = false, reason = ex.Message }); return false; }
+        catch { return false; }
     }
 
-    // Frases aceitas no modo "uma frase": com e sem o "jarvis" na frente.
-    static IEnumerable<string> OncePhrases() => Commands.Concat(Commands.Select(c => "jarvis " + c)).Concat(WakeWords);
-
-    static async Task Run(Func<Task> f)
+    // Executa uma operação por vez, com limite de tempo: nada pode travar a fila para sempre.
+    static async Task Run(Func<Task> f, string what)
     {
-        await Gate.WaitAsync();
-        try { await f(); }
-        catch (Exception ex) { Emit(new { type = "error", message = ex.Message }); }
+        if (!await Gate.WaitAsync(TimeSpan.FromSeconds(10))) { Emit(new { type = "error", message = "fila de voz ocupada (" + what + ")" }); return; }
+        try
+        {
+            var task = f();
+            if (await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(8))) != task)
+            {
+                Emit(new { type = "error", message = "operação de voz demorou demais: " + what });
+                ResetRecognizer();
+            }
+            else await task;
+        }
+        catch (Exception ex) { Emit(new { type = "error", message = ex.Message }); ResetRecognizer(); }
         finally { Gate.Release(); }
     }
 
-    // ---------- Palavra de ativação (contínuo, offline) ----------
-    static async Task EnsureWakeRec()
+    static bool Armed => DateTime.UtcNow < armedUntil;
+
+    static void EmitState() =>
+        Emit(new { type = "state", listening = Armed ? "once" : (wakeWanted ? "wake" : "off") });
+
+    // ---------- Reconhecedor contínuo ----------
+    static void ResetRecognizer()
     {
-        if (wakeRec != null) return;
-        wakeRec = new SpeechRecognizer(PtBr);
-        var phrases = WakeWords.Concat(Commands.Select(c => "jarvis " + c)).ToList();
-        wakeRec.Constraints.Add(new SpeechRecognitionListConstraint(phrases, "wake"));
-        var comp = await wakeRec.CompileConstraintsAsync();
-        if (comp.Status != SpeechRecognitionResultStatus.Success) throw new Exception("Falha ao compilar comandos: " + comp.Status);
-        wakeRec.ContinuousRecognitionSession.AutoStopSilenceTimeout = TimeSpan.FromDays(1);
-        wakeRec.ContinuousRecognitionSession.ResultGenerated += (_, e) =>
+        var r = rec;
+        rec = null;
+        running = false;
+        try { r?.Dispose(); } catch { }
+    }
+
+    static async Task EnsureRecognizer()
+    {
+        if (rec != null) return;
+        var r = new SpeechRecognizer(PtBr);
+        var phrases = WakeWords.Concat(Commands).Concat(Commands.Select(c => "jarvis " + c)).Distinct().ToList();
+        r.Constraints.Add(new SpeechRecognitionListConstraint(phrases, "comandos"));
+        var comp = await r.CompileConstraintsAsync();
+        if (comp.Status != SpeechRecognitionResultStatus.Success) { r.Dispose(); throw new Exception("Falha ao compilar comandos: " + comp.Status); }
+        r.ContinuousRecognitionSession.AutoStopSilenceTimeout = TimeSpan.FromDays(1);
+        r.ContinuousRecognitionSession.ResultGenerated += (_, e) => OnResult(e.Result);
+        r.ContinuousRecognitionSession.Completed += (s, a) =>
         {
-            var r = e.Result;
-            if (r.Status != SpeechRecognitionResultStatus.Success) return;
-            if (r.Confidence == SpeechRecognitionConfidence.Rejected) { Emit(new { type = "debug", what = "wake-rejeitado", text = r.Text }); return; }
-            if (r.Confidence == SpeechRecognitionConfidence.Low && !WakeWords.Contains(r.Text.Trim().ToLowerInvariant())) { Emit(new { type = "debug", what = "wake-baixa", text = r.Text }); return; }
-            // Só a palavra "jarvis" é curta e dá falso positivo com barulho: exige confiança alta.
-            if (WakeWords.Contains(r.Text.Trim().ToLowerInvariant()) && r.Confidence == SpeechRecognitionConfidence.Low) return;
-            Emit(new { type = "wake", text = r.Text, confidence = r.Confidence.ToString() });
+            if (!ReferenceEquals(rec?.ContinuousRecognitionSession, s)) return;
+            running = false;
+            Emit(new { type = "debug", what = "sessao-terminou", status = a.Status.ToString() });
+            // religa sozinho se ainda devia estar ouvindo (timeout, troca de microfone…)
+            if (wakeWanted || Armed) _ = Task.Run(async () => { await Task.Delay(600); await Run(EnsureRunning, "religar"); });
         };
-        wakeRec.ContinuousRecognitionSession.Completed += (sender, args) =>
-        {
-            wakeRunning = false;
-            // Reinicia sozinho se ainda devia estar ouvindo (ex.: timeout, troca de microfone)
-            if (wakeWanted) Task.Run(async () => { await Task.Delay(800); await Run(StartWake); });
-        };
+        rec = r;
     }
 
-    static async Task StartWake()
+    static async Task EnsureRunning()
     {
-        wakeWanted = true;
-        await EnsureWakeRec();
-        if (!wakeRunning)
-        {
-            await wakeRec!.ContinuousRecognitionSession.StartAsync();
-            wakeRunning = true;
-        }
-        Emit(new { type = "state", listening = "wake" });
+        await EnsureRecognizer();
+        if (running) return;
+        await rec!.ContinuousRecognitionSession.StartAsync();
+        running = true;
     }
 
-    static async Task StopWake()
+    // Para a sessão só se ninguém mais precisa dela. Usa Cancel (não Stop) e, se travar, descarta o reconhecedor.
+    static async Task StopIfIdle()
     {
-        if (wakeRec != null && wakeRunning)
-        {
-            try { await wakeRec.ContinuousRecognitionSession.StopAsync(); } catch { }
-            wakeRunning = false;
-        }
+        if (wakeWanted || Armed || rec == null || !running) return;
+        var task = rec.ContinuousRecognitionSession.CancelAsync().AsTask();
+        if (await Task.WhenAny(task, Task.Delay(1500)) != task) ResetRecognizer();
+        running = false;
     }
 
-    // ---------- Uma frase livre (ditado; se não der, lista de comandos) ----------
-    static async Task ListenOnce()
+    // Botão do microfone: aceita o próximo comando (com ou sem "jarvis") nos próximos segundos.
+    static async Task Arm()
     {
-        var resume = wakeWanted;
-        wakeWanted = false;
-        await StopWake();
-        Emit(new { type = "state", listening = "once" });
-        try
+        int my;
+        lock (StateLock) { armedUntil = DateTime.UtcNow + ArmWindow; my = ++armSeq; }
+        await EnsureRunning();
+        EmitState();
+        if (!dictationOk) Emit(new { type = "mode", dictation = false });
+        _ = Task.Run(async () =>
         {
-            SpeechRecognitionResult? r = null;
-            if (dictationOk)
-            {
-                try
-                {
-                    using var rec = new SpeechRecognizer(PtBr);
-                    rec.Timeouts.InitialSilenceTimeout = TimeSpan.FromSeconds(6);
-                    rec.Timeouts.EndSilenceTimeout = TimeSpan.FromSeconds(1.2);
-                    rec.Constraints.Add(new SpeechRecognitionTopicConstraint(SpeechRecognitionScenario.Dictation, "ditado"));
-                    var comp = await rec.CompileConstraintsAsync();
-                    if (comp.Status != SpeechRecognitionResultStatus.Success) throw new Exception(comp.Status.ToString());
-                    r = await rec.RecognizeAsync();
-                    if (r.Status != SpeechRecognitionResultStatus.Success) throw new Exception(r.Status.ToString());
-                }
-                catch (Exception ex)
-                {
-                    // 0x80045509 = reconhecimento de fala online desativado na privacidade do Windows
-                    dictationOk = false;
-                    r = null;
-                    Emit(new { type = "mode", dictation = false, reason = ex.Message });
-                }
-            }
-            if (r == null)
-            {
-                using var rec = new SpeechRecognizer(PtBr);
-                rec.Timeouts.InitialSilenceTimeout = TimeSpan.FromSeconds(6);
-                rec.Timeouts.EndSilenceTimeout = TimeSpan.FromSeconds(0.8);
-                rec.Timeouts.InitialSilenceTimeout = TimeSpan.FromSeconds(8);
-                rec.Constraints.Add(new SpeechRecognitionListConstraint(OncePhrases(), "cmds"));
-                await rec.CompileConstraintsAsync();
-                r = await rec.RecognizeAsync();
-            }
-            Emit(new { type = "debug", what = "once-resultado", status = r.Status.ToString(), text = r.Text, confidence = r.Confidence.ToString() });
-            var ok = r.Status == SpeechRecognitionResultStatus.Success && r.Confidence != SpeechRecognitionConfidence.Rejected && !string.IsNullOrWhiteSpace(r.Text);
-            Emit(new { type = "heard", text = ok ? r.Text : "", confidence = r.Confidence.ToString(), dictation = dictationOk });
-        }
-        finally
+            await Task.Delay(ArmWindow + TimeSpan.FromMilliseconds(200));
+            bool expired;
+            lock (StateLock) { expired = my == armSeq && armedUntil != DateTime.MinValue && !Armed; if (expired) armedUntil = DateTime.MinValue; }
+            if (!expired) return;
+            Emit(new { type = "heard", text = "", confidence = "Timeout", dictation = dictationOk });
+            EmitState();
+            await Run(StopIfIdle, "fim-once");
+        });
+    }
+
+    static void OnResult(SpeechRecognitionResult r)
+    {
+        var text = (r.Text ?? "").Trim();
+        var low = text.ToLowerInvariant();
+        var conf = r.Confidence;
+        Emit(new { type = "debug", what = "ouvido", text, confidence = conf.ToString(), armed = Armed });
+        if (r.Status != SpeechRecognitionResultStatus.Success || conf == SpeechRecognitionConfidence.Rejected || text.Length == 0) return;
+
+        bool armed;
+        lock (StateLock) { armed = Armed; if (armed) { armedUntil = DateTime.MinValue; armSeq++; } }
+        if (armed)
         {
-            if (resume) await StartWake();
-            else Emit(new { type = "state", listening = "off" });
+            // Microfone apertado: aceita qualquer comando da lista (inclusive "jarvis" sozinho).
+            Emit(new { type = "heard", text, confidence = conf.ToString(), dictation = dictationOk });
+            EmitState();
+            _ = Run(StopIfIdle, "fim-once");
+            return;
         }
+
+        if (!wakeWanted) return;
+        // Sem o microfone: só vale se começar com "jarvis" (ou variações).
+        bool hasWake = WakeWords.Any(w => low == w || low.StartsWith(w + " "));
+        if (!hasWake) return;
+        if (conf == SpeechRecognitionConfidence.Low) return;
+        Emit(new { type = "wake", text, confidence = conf.ToString() });
     }
 
     // ---------- Fala ----------
