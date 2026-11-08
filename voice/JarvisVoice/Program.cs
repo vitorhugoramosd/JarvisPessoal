@@ -46,7 +46,8 @@ static class Program
         Console.InputEncoding = System.Text.Encoding.UTF8;
         Console.OutputEncoding = System.Text.Encoding.UTF8;
         var voices = SpeechSynthesizer.AllVoices.Where(v => v.Language.StartsWith("pt", StringComparison.OrdinalIgnoreCase)).Select(v => v.DisplayName).ToArray();
-        Emit(new { type = "ready", dictation = true, voices });
+        dictationOk = await CheckDictation();
+        Emit(new { type = "ready", dictation = dictationOk, voices });
 
         string? line;
         while ((line = await Console.In.ReadLineAsync()) != null)
@@ -74,6 +75,21 @@ static class Program
         }
     }
 
+    static async Task<bool> CheckDictation()
+    {
+        try
+        {
+            using var rec = new SpeechRecognizer(PtBr);
+            rec.Constraints.Add(new SpeechRecognitionTopicConstraint(SpeechRecognitionScenario.Dictation, "ditado"));
+            var comp = await rec.CompileConstraintsAsync();
+            return comp.Status == SpeechRecognitionResultStatus.Success;
+        }
+        catch (Exception ex) { Emit(new { type = "mode", dictation = false, reason = ex.Message }); return false; }
+    }
+
+    // Frases aceitas no modo "uma frase": com e sem o "jarvis" na frente.
+    static IEnumerable<string> OncePhrases() => Commands.Concat(Commands.Select(c => "jarvis " + c)).Concat(WakeWords);
+
     static async Task Run(Func<Task> f)
     {
         await Gate.WaitAsync();
@@ -96,9 +112,10 @@ static class Program
         {
             var r = e.Result;
             if (r.Status != SpeechRecognitionResultStatus.Success) return;
-            if (r.Confidence is SpeechRecognitionConfidence.Rejected or SpeechRecognitionConfidence.Low) return;
+            if (r.Confidence == SpeechRecognitionConfidence.Rejected) { Emit(new { type = "debug", what = "wake-rejeitado", text = r.Text }); return; }
+            if (r.Confidence == SpeechRecognitionConfidence.Low && !WakeWords.Contains(r.Text.Trim().ToLowerInvariant())) { Emit(new { type = "debug", what = "wake-baixa", text = r.Text }); return; }
             // Só a palavra "jarvis" é curta e dá falso positivo com barulho: exige confiança alta.
-            if (WakeWords.Contains(r.Text.Trim().ToLowerInvariant()) && r.Confidence != SpeechRecognitionConfidence.High) return;
+            if (WakeWords.Contains(r.Text.Trim().ToLowerInvariant()) && r.Confidence == SpeechRecognitionConfidence.Low) return;
             Emit(new { type = "wake", text = r.Text, confidence = r.Confidence.ToString() });
         };
         wakeRec.ContinuousRecognitionSession.Completed += (sender, args) =>
@@ -166,10 +183,12 @@ static class Program
                 using var rec = new SpeechRecognizer(PtBr);
                 rec.Timeouts.InitialSilenceTimeout = TimeSpan.FromSeconds(6);
                 rec.Timeouts.EndSilenceTimeout = TimeSpan.FromSeconds(0.8);
-                rec.Constraints.Add(new SpeechRecognitionListConstraint(Commands, "cmds"));
+                rec.Timeouts.InitialSilenceTimeout = TimeSpan.FromSeconds(8);
+                rec.Constraints.Add(new SpeechRecognitionListConstraint(OncePhrases(), "cmds"));
                 await rec.CompileConstraintsAsync();
                 r = await rec.RecognizeAsync();
             }
+            Emit(new { type = "debug", what = "once-resultado", status = r.Status.ToString(), text = r.Text, confidence = r.Confidence.ToString() });
             var ok = r.Status == SpeechRecognitionResultStatus.Success && r.Confidence != SpeechRecognitionConfidence.Rejected && !string.IsNullOrWhiteSpace(r.Text);
             Emit(new { type = "heard", text = ok ? r.Text : "", confidence = r.Confidence.ToString(), dictation = dictationOk });
         }

@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
-const { ipcMain } = require('electron');
+const { ipcMain, app } = require('electron');
 
 const EXE = path.resolve(__dirname, '..', '..', 'voice', 'bin', 'JarvisVoice.exe');
 let child = null;
@@ -26,9 +26,20 @@ function write(obj) {
   return true;
 }
 
+// Log de diagnóstico: %APPDATA%\jarvis\voice.log (só eventos de voz, sem áudio)
+function log(msg) {
+  try {
+    const file = path.join(app.getPath('userData'), 'voice.log');
+    try { if (fs.statSync(file).size > 512 * 1024) fs.renameSync(file, file + '.old'); } catch {}
+    fs.appendFileSync(file, `${new Date().toISOString()} ${msg}\n`);
+  } catch {}
+}
+
 function onLine(line) {
   let ev;
-  try { ev = JSON.parse(line); } catch { return; }
+  try { ev = JSON.parse(line); } catch { log('[stdout] ' + line); return; }
+  if (ev.type !== 'spoken') log(line);
+  if (ev.type === 'debug') return;
   if (ev.type === 'spoken' || (ev.type === 'error' && ev.id)) {
     const p = pendingSpeak.get(ev.id);
     if (p) {
@@ -57,7 +68,7 @@ function start() {
     let i;
     while ((i = buf.indexOf('\n')) >= 0) { const l = buf.slice(0, i).trim(); buf = buf.slice(i + 1); if (l) onLine(l); }
   });
-  child.stderr.on('data', (d) => console.warn('[voice]', String(d).trim()));
+  child.stderr.on('data', (d) => { console.warn('[voice]', String(d).trim()); log('[stderr] ' + String(d).trim()); });
   child.on('error', (e) => send({ type: 'error', message: e.message }));
   child.on('exit', (code) => {
     child = null; buf = '';
@@ -81,6 +92,7 @@ function init(winGetter) {
     if (cmd === 'wake') wantWake = true;
     if (cmd === 'stop') wantWake = false;
     start();
+    log('[cmd] ' + cmd);
     return { ok: write({ cmd }), data: !!child };
   });
   ipcMain.handle('voice:speak', async (_e, text) => {

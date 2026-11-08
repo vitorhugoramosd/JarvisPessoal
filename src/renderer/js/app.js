@@ -559,6 +559,16 @@ function buildContext() {
   if (g?.last) L.push(`Último jogo dele: ${g.last.name} (${ago(g.last.lastPlayed)}).`);
   return L.join('\n');
 }
+// Separa o briefing completo (tela) da versão curta para falar (linha "FALA: …").
+function splitBriefing(text) {
+  const t = String(text || '').trim();
+  const m = t.match(/^\s*\**FALA\**\s*:\s*(.+)$/im);
+  if (m) return { full: t.slice(0, m.index).trim() || m[1].trim(), spoken: m[1].trim() };
+  // sem a linha FALA: usa as duas primeiras frases
+  const frases = t.match(/[^.!?]+[.!?]+/g) || [t];
+  return { full: t, spoken: frases.slice(0, 2).join(' ').trim() };
+}
+
 let briefingBusy = false;
 // opts.speakIt = true → também fala o briefing. Retorna o texto (ou null).
 async function generateBriefing(opts) {
@@ -568,10 +578,14 @@ async function generateBriefing(opts) {
   box.classList.add('loading'); box.classList.remove('dim');
   box.textContent = 'J.A.R.V.I.S. analisando…';
   try {
-    const r = await J.ask(`Faça um briefing de abertura para o ${CFG.userName} em 3 a 5 frases curtas, no seu estilo, com base nestes dados (não invente nada além deles, sem buscar na web):\n\n${buildContext()}`, { fresh: true, allowWeb: false });
-    box.textContent = r.text.trim();
-    if (opts?.speakIt === true) Voice.speak(box.textContent);
-    return box.textContent;
+    const r = await J.ask(
+      `Faça um briefing de abertura para o ${CFG.userName} em 3 a 5 frases curtas, no seu estilo, com base nestes dados (não invente nada além deles, sem buscar na web).\n` +
+      'Depois, numa linha separada começando exatamente com "FALA:", escreva uma versão para ser falada em voz alta: no máximo 2 frases curtas (até ~25 palavras), só o essencial, sem números longos.\n\n' +
+      buildContext(), { fresh: true, allowWeb: false });
+    const { full, spoken } = splitBriefing(r.text);
+    box.textContent = full;           // na tela: o briefing completo
+    if (opts?.speakIt === true) Voice.speak(spoken); // em voz: a versão curtinha
+    return spoken;
   } catch (e) {
     box.classList.add('dim');
     box.textContent = 'Não consegui falar com o Claude agora: ' + e.message;

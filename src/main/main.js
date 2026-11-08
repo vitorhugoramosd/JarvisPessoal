@@ -110,13 +110,27 @@ function smokeTest(dir) {
   setTimeout(async () => {
     await js("document.querySelector('#newsTabs [data-k=geek]')?.click()");
     await js("import('./js/voice.js').then(m => m.speak('Teste de voz do Jarvis.')).then(() => console.log('voice-smoke: fala ok'))");
+    // Interrupção: começa uma fala longa e aperta o microfone no meio dela
+    await js(`import('./js/voice.js').then(async (m) => {
+      const t0 = performance.now();
+      const p = m.speak('Esta é uma frase bem comprida para testar a interrupção da fala do Jarvis quando o senhor aperta o microfone no meio dela, então ela precisa durar vários segundos.');
+      await new Promise((r) => setTimeout(r, 3000));
+      const antes = m.isSpeaking();
+      document.getElementById('btnMic').click();
+      await p;
+      console.log('voice-smoke: interrupção', JSON.stringify({ falandoAntes: antes, falandoDepois: document.body.classList.contains('speaking'), msAteCalar: Math.round(performance.now() - t0 - 3000), status: document.getElementById('voiceStatus')?.textContent }));
+    })`);
     await js("const i=document.getElementById('chatInput'); i.value='Em uma frase: quem é o maior ídolo da história do Corinthians?'; document.getElementById('chatForm').requestSubmit()");
   }, 15000);
+  setTimeout(async () => {
+    await js("console.log('voice-smoke: briefing na tela', JSON.stringify(document.getElementById('briefing').textContent))");
+    await js("window.JarvisActions?.briefing?.().then((s) => console.log('voice-smoke: briefing falado', JSON.stringify(s)))");
+  }, 26000);
   setTimeout(async () => {
     await shot('3-hud-later.png');
     fs.writeFileSync(path.join(dir, 'console.txt'), logs.join('\n'));
     app.quit();
-  }, 40000);
+  }, 55000);
 }
 
 function openSafe(url) {

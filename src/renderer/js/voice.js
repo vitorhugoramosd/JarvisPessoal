@@ -16,6 +16,8 @@ let fromVoice = false;     // a pergunta atual veio da voz → responder falando
 let ctx = null;
 const queue = [];
 let speaking = false;
+let currentSrc = null;   // áudio tocando agora (para poder interromper)
+let epoch = 0;           // muda a cada interrupção: falas antigas que chegarem depois são descartadas
 
 function clean(text) {
   return String(text || '')
@@ -86,7 +88,9 @@ function playProcessed(buffer) {
       document.documentElement.style.setProperty('--voice-level', lvl.toFixed(3));
       raf = requestAnimationFrame(meter);
     };
+    currentSrc = src;
     src.onended = () => {
+      if (currentSrc === src) currentSrc = null;
       cancelAnimationFrame(raf);
       lfo.stop();
       document.documentElement.style.setProperty('--voice-level', '0');
@@ -117,12 +121,14 @@ function speakBrowser(text) {
 }
 
 async function speakOne(text) {
+  const my = epoch;
   document.body.classList.add('speaking');
   try {
     if (helperOk) {
       try {
         const url = await J.voice.speak(text);
         const buf = await audioCtx().decodeAudioData(b64ToBuf(url));
+        if (my !== epoch) return; // foi interrompido enquanto sintetizava
         await playProcessed(buf);
         return;
       } catch (e) { console.warn('voz Daniel falhou, usando a do navegador:', e.message); }
@@ -153,6 +159,18 @@ async function pump() {
   speaking = false;
 }
 export function isSpeaking() { return speaking; }
+
+// Cala o Jarvis na hora: para o áudio atual e descarta o que estava na fila.
+export function stopSpeaking() {
+  epoch++;
+  while (queue.length) queue.shift().resolve();
+  try { currentSrc?.stop(); } catch {}
+  currentSrc = null;
+  try { if ('speechSynthesis' in window) speechSynthesis.cancel(); } catch {}
+  document.body.classList.remove('speaking');
+  document.documentElement.style.setProperty('--voice-level', '0');
+}
+export function speechEpoch() { return epoch; }
 
 // Bipe curto de "pronto para ouvir"
 export function chirp() {
@@ -202,9 +220,13 @@ export function toast(text, kind = 'heard') {
 
 export function listenOnce() {
   if (!helperOk) { toast('Voz indisponível — o ajudante JarvisVoice não está rodando.', 'err'); return; }
+  const wasSpeaking = speaking || !!currentSrc;
+  stopSpeaking();
   if (listening === 'once') return;
+  listening = 'once'; setStatus();
   chirp();
-  J.voice.cmd('once').catch(() => {});
+  // pequena pausa para o fim da fala/bipe não ser captado pelo microfone
+  setTimeout(() => J.voice.cmd('once').catch(() => {}), wasSpeaking ? 250 : 120);
 }
 
 export function setWake(on) {
@@ -325,9 +347,10 @@ export async function handle(textRaw) {
 async function askClaude(text) {
   if (!A().ask) return;
   fromVoice = true;
+  const my = epoch;
   try {
     const answer = await A().ask(text);
-    if (answer) await speak(answer);
+    if (answer && my === epoch) await speak(answer);
   } catch (e) {
     speak('Não consegui falar com o Claude agora.');
   } finally { fromVoice = false; }
