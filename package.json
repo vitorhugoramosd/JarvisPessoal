@@ -9,7 +9,8 @@
     "start": "electron .",
     "autostart:on": "electron . --install-autostart",
     "autostart:off": "electron . --remove-autostart",
-    "build:voice": "dotnet publish voice/JarvisVoice -c Release -o voice/bin"
+    "build:voice": "dotnet publish voice/JarvisVoice -c Release -o voice/bin",
+    "shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/make-shortcut.ps1"
   },
   "devDependencies": {
     "electron": "33.2.1"

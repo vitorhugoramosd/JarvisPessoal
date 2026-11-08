@@ -22,6 +22,7 @@ Atalho global: **Ctrl + Alt + J**.
 ```
 npm run autostart:on    # grava "Jarvis" em HKCU\...\Run e desliga o início automático do Blade Dash
 npm run autostart:off
+npm run shortcut        # recria o atalho "Jarvis" na Área de Trabalho
 ```
 Também dá para ligar/desligar em ⚙ Configurações.
 
