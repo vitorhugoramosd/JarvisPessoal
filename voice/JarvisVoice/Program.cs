@@ -25,6 +25,7 @@ static class Program
         "liga a rádio", "toca uma música", "para a música", "parar a música", "pausa a música", "desliga a rádio", "para a rádio",
         "notícias", "notícias de tecnologia", "notícias de geopolítica", "notícias do mundo", "notícias geek", "notícias de games", "notícias do timão",
         "como está o corinthians", "como está o timão", "próximo jogo do corinthians", "corinthians", "timão",
+        "placar", "placar do jogo", "como está o jogo", "quanto está o jogo", "quanto tá o jogo",
         "previsão do tempo", "como está o tempo", "clima", "vai chover",
         "sugere uma música", "trilha do dia",
         "briefing", "me dá um briefing", "resumo do dia",

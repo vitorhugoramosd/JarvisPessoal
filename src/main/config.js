@@ -13,6 +13,11 @@ const DEFAULTS = {
   location: null,         // { name, lat, lon } — vazio = detectar pela internet
   teamId: '874',          // Corinthians na ESPN
   league: 'bra.1',
+  // Modo Timão (docs/MODO_TIMAO.md)
+  timaoSiren: true,       // sirene no gol
+  timaoPopup: false,      // traz o Jarvis pra frente no gol (desligado: não atrapalhar o jogo no PC)
+  timaoVoice: true,       // Jarvis narra gols, início/fim e alertas
+  timaoLeagues: ['bra.1'], // ligas acompanhadas (ex.: 'bra.copa_do_brazil', 'conmebol.libertadores')
   bladeDashDir: path.join(process.env.USERPROFILE || 'C:\\Users\\vitor', 'OneDrive', 'Área de Trabalho', 'Projetos', 'blade-dash'),
 };
 

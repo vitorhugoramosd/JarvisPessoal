@@ -9,6 +9,7 @@ const feeds = require('./feeds');
 const games = require('./games');
 const claude = require('./claude');
 const voice = require('./voice');
+const timao = require('./timao');
 
 const APP_DIR = path.resolve(__dirname, '..', '..');
 const RUN_VALUE = 'Jarvis';
@@ -55,6 +56,7 @@ function start() {
   app.whenReady().then(() => {
     createWindow();
     voice.init(() => win);
+    timao.init(() => win, () => config.load()); // Modo Timão: placar ao vivo, gols, alertas (IPC timao:*)
     globalShortcut.register('Control+Alt+J', () => {
       if (win && win.isVisible() && win.isFocused() && !win.isMinimized()) win.minimize();
       else showWindow();
@@ -64,7 +66,7 @@ function start() {
     // Garante que só o Jarvis abre no início do Windows (o Blade Dash abre pelo botão "Jogar").
     if (process.argv.includes('--autostart')) { try { games.disableBladeDashAutostart(); } catch {} }
   });
-  app.on('will-quit', () => { globalShortcut.unregisterAll(); voice.stop(); });
+  app.on('will-quit', () => { globalShortcut.unregisterAll(); voice.stop(); timao.stop(); });
   app.on('window-all-closed', () => app.quit());
 }
 
@@ -106,6 +108,21 @@ function smokeTest(dir) {
   const js = (code) => win.webContents.executeJavaScript(code, true).catch((e) => logs.push('[exec] ' + e.message));
   setTimeout(() => shot('1-boot.png'), 3500);
   setTimeout(() => js("document.getElementById('btnOther')?.click() || document.getElementById('bootSkip')?.click()"), 4500);
+  if (process.env.JARVIS_SMOKE_TIMAO === 'goal') {
+    setTimeout(() => js('window.jarvis.timao.testGoal({ against: false })'), 9000);
+    [['g1.png', 10200], ['g2.png', 12500]].forEach(([n, t]) => setTimeout(() => shot(n), t));
+    setTimeout(() => { fs.writeFileSync(path.join(dir, 'console.txt'), logs.join('\n')); app.quit(); }, 15000);
+    return;
+  }
+  if (process.env.JARVIS_SMOKE_TIMAO) {
+    // Modo Timão: jogo simulado rápido (0,35 s por minuto) com prints nos momentos-chave
+    setTimeout(() => js(`window.jarvis.timao.onEvent((e) => console.log('timao-event', e.kind, e.minute || '', e.player || '', JSON.stringify(e.score || {}), e.say || ''));
+      window.jarvis.timao.simulate({ speed: 0.35 })`), 9000);
+    [['t1-pre.png', 10500], ['t2-live.png', 22000], ['t3-gol.png', 30600], ['t4-live2.png', 36000], ['t5-fim.png', 47000]]
+      .forEach(([n, t]) => setTimeout(() => shot(n), t));
+    setTimeout(() => { fs.writeFileSync(path.join(dir, 'console.txt'), logs.join('\n')); app.quit(); }, 52000);
+    return;
+  }
   setTimeout(() => shot('2-hud.png'), 14000);
   setTimeout(async () => {
     await js("document.querySelector('#newsTabs [data-k=geek]')?.click()");

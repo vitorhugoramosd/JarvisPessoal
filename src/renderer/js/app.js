@@ -1,6 +1,7 @@
 // J.A.R.V.I.S. — interface (processo de renderização)
 import { initMusic } from './musicpanel.js';
 import * as Voice from './voice.js';
+import * as Timao from './timao.js';
 
 const J = window.jarvis;
 const $ = (s, r = document) => r.querySelector(s);
@@ -737,6 +738,7 @@ function wireEvents() {
   wireEvents();
   exposeActions();
   Voice.init({ cfg: () => CFG });
+  Timao.init({ cfg: () => CFG }).catch(() => {});
   boot();
 })();
 

@@ -325,7 +325,14 @@ export async function handle(textRaw) {
     say(await newsSpeech(hit[1], hit[2]));
     return true;
   }
-  if (/corinth|timao|tabela|brasileirao/.test(t)) { act.enter?.(); say(footballSpeech()); return true; }
+  // Modo Timão: placar ao vivo
+  if (/placar|(como|quanto) (esta|ta) o jogo|ta quanto o jogo/.test(t)) { act.enter?.(); say(window.JarvisTimao?.liveSpeech?.() || footballSpeech()); return true; }
+  if (/corinth|timao|tabela|brasileirao/.test(t)) {
+    act.enter?.();
+    const tp = window.JarvisTimao?.getState?.()?.phase;
+    say(tp && tp !== 'idle' ? window.JarvisTimao.liveSpeech() : footballSpeech());
+    return true;
+  }
   if (/(previsao|tempo|clima|vai chover|temperatura)/.test(t) && t.split(' ').length <= 6) { say(weatherSpeech()); return true; }
   if (/(trilha|sugere|sugestao|recomenda)\w*( uma)? ?(musica|som)?/.test(t) && /musica|trilha|som/.test(t)) {
     const tr = act.track?.();

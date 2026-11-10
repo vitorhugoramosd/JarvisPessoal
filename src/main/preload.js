@@ -27,5 +27,14 @@ contextBridge.exposeInMainWorld('jarvis', {
     available: () => call('voice:available'),
     onEvent: (cb) => ipcRenderer.on('voice:event', (_e, ev) => cb(ev)),
   },
+  // Modo Timão (docs/MODO_TIMAO.md)
+  timao: {
+    get: () => call('timao:get'),
+    simulate: (opts) => call('timao:simulate', opts || {}),
+    stopSim: () => call('timao:stopSim'),
+    testGoal: (opts) => call('timao:testGoal', opts || {}),
+    onState: (cb) => ipcRenderer.on('timao:state', (_e, s) => cb(s)),
+    onEvent: (cb) => ipcRenderer.on('timao:event', (_e, ev) => cb(ev)),
+  },
   isAutostart: process.argv.includes('--jarvis-autostart'),
 });

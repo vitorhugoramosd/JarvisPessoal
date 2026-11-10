@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" />
   <link rel="stylesheet" href="css/hud.css" />
   <link rel="stylesheet" href="css/voice.css" />
+  <link rel="stylesheet" href="css/timao.css" />
 </head>
 <body>
   <canvas id="bg"></canvas>
@@ -161,6 +162,18 @@
     <label><input type="checkbox" data-cfg="autoBriefing" /> Briefing automático do Claude ao abrir (usa seu plano)</label>
     <label><input type="checkbox" data-cfg="fullscreen" /> Tela cheia</label>
     <label class="row">Seu nome <input type="text" data-cfg="userName" /></label>
+    <div class="timao-cfg">
+      <h4>MODO TIMÃO</h4>
+      <label><input type="checkbox" data-cfg="timaoSiren" /> Sirene no gol</label>
+      <label><input type="checkbox" data-cfg="timaoVoice" /> Narração do Jarvis (gols, início, fim)</label>
+      <label><input type="checkbox" data-cfg="timaoPopup" /> Trazer o Jarvis pra frente no gol</label>
+      <div class="timao-btns">
+        <button type="button" id="timaoSim">▶ Simular jogo</button>
+        <button type="button" id="timaoSimStop">■ Parar simulação</button>
+        <button type="button" id="timaoTestGoal">⚽ Testar gol</button>
+        <button type="button" id="timaoTestAgainst">Testar gol contra</button>
+      </div>
+    </div>
     <p class="dim mono small">Atalho global: Ctrl + Alt + J traz o Jarvis de volta.</p>
     <div class="right"><button id="settingsClose">fechar</button></div>
   </dialog>
